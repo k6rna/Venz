@@ -1,12 +1,11 @@
 -- ================================================
 --   Venz | Hacker Playground Script
---   Features: ESP, Fly, Speed, Teleport, God Mode
+--   Features: ESP, Fly, Speed, Teleport, God Mode, NoClip
 -- ================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
@@ -32,16 +31,18 @@ local ESP_CONFIG = {
 }
 
 -- ================================================
---   PLAYER STATE
+--   STATE
 -- ================================================
 local STATE = {
-    FlyEnabled  = false,
-    GodEnabled  = false,
-    WalkSpeed   = 16,
+    FlyEnabled   = false,
+    NoClip       = false,
+    GodEnabled   = false,
+    WalkSpeed    = 16,
+    FlySpeed     = 40,
 }
 
 -- ================================================
---   GUI SETUP
+--   GUI
 -- ================================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "VenzGUI"
@@ -49,10 +50,9 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = game.CoreGui
 
--- Main frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 220, 0, 380)
+mainFrame.Size = UDim2.new(0, 220, 0, 430)
 mainFrame.Position = UDim2.new(0, 20, 0, 20)
 mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 mainFrame.BorderSizePixel = 0
@@ -60,7 +60,6 @@ mainFrame.Active = true
 mainFrame.Parent = screenGui
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
 
--- Drop shadow effect
 local shadow = Instance.new("Frame")
 shadow.Size = UDim2.new(1, 10, 1, 10)
 shadow.Position = UDim2.new(0, -5, 0, -5)
@@ -71,7 +70,6 @@ shadow.ZIndex = mainFrame.ZIndex - 1
 shadow.Parent = mainFrame
 Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 12)
 
--- Title bar
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 36)
 titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -79,7 +77,6 @@ titleBar.BorderSizePixel = 0
 titleBar.Parent = mainFrame
 Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
 
--- Title text
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 1, 0)
 titleLabel.BackgroundTransparency = 1
@@ -89,7 +86,6 @@ titleLabel.TextSize = 15
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.Parent = titleBar
 
--- Minimize button
 local minBtn = Instance.new("TextButton")
 minBtn.Size = UDim2.new(0, 28, 0, 28)
 minBtn.Position = UDim2.new(1, -32, 0.5, -14)
@@ -102,7 +98,6 @@ minBtn.BorderSizePixel = 0
 minBtn.Parent = titleBar
 Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
--- Content frame
 local content = Instance.new("Frame")
 content.Name = "Content"
 content.Size = UDim2.new(1, 0, 1, -36)
@@ -110,17 +105,16 @@ content.Position = UDim2.new(0, 0, 0, 36)
 content.BackgroundTransparency = 1
 content.Parent = mainFrame
 
--- Minimize logic
 local minimized = false
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
     content.Visible = not minimized
-    mainFrame.Size = minimized and UDim2.new(0, 220, 0, 36) or UDim2.new(0, 220, 0, 380)
+    mainFrame.Size = minimized and UDim2.new(0, 220, 0, 36) or UDim2.new(0, 220, 0, 430)
     minBtn.Text = minimized and "+" or "−"
 end)
 
 -- ================================================
---   SECTION LABEL
+--   UI BUILDERS
 -- ================================================
 local function MakeSection(text, yPos)
     local lbl = Instance.new("TextLabel")
@@ -135,9 +129,6 @@ local function MakeSection(text, yPos)
     lbl.Parent = content
 end
 
--- ================================================
---   TOGGLE BUILDER
--- ================================================
 local function MakeToggle(labelText, yPos, defaultOn, callback)
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -20, 0, 30)
@@ -186,9 +177,6 @@ local function MakeToggle(labelText, yPos, defaultOn, callback)
     end)
 end
 
--- ================================================
---   SLIDER BUILDER
--- ================================================
 local function MakeSlider(labelText, yPos, min, max, default, callback)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(1, -20, 0, 44)
@@ -242,9 +230,7 @@ local function MakeSlider(labelText, yPos, min, max, default, callback)
     trackBtn.Parent = container
 
     local function update(inputX)
-        local abs = track.AbsolutePosition.X
-        local w   = track.AbsoluteSize.X
-        local p   = math.clamp((inputX - abs) / w, 0, 1)
+        local p = math.clamp((inputX - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
         local val = math.floor(min + (max - min) * p)
         fill.Size = UDim2.new(p, 0, 1, 0)
         valLabel.Text = tostring(val)
@@ -256,18 +242,13 @@ local function MakeSlider(labelText, yPos, min, max, default, callback)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-            update(i.Position.X)
-        end
+        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then update(i.Position.X) end
     end)
     trackBtn.MouseButton1Click:Connect(function()
         update(UserInputService:GetMouseLocation().X)
     end)
 end
 
--- ================================================
---   TELEPORT BUTTON BUILDER
--- ================================================
 local function MakeTpButton(labelText, yPos, callback)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -20, 0, 30)
@@ -280,61 +261,46 @@ local function MakeTpButton(labelText, yPos, callback)
     btn.BorderSizePixel = 0
     btn.Parent = content
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
     btn.MouseButton1Click:Connect(callback)
-
-    btn.MouseEnter:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(0, 180, 90)
-    end)
-    btn.MouseLeave:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    end)
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(0, 180, 90) end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35) end)
 end
 
 -- ================================================
 --   BUILD UI
 -- ================================================
-
--- ESP Section
 MakeSection("— ESP", 6)
-MakeToggle("ESP Enabled",  24, false, function(v) ESP_CONFIG.Enabled = v end)
-MakeToggle("Boxes",        58, true,  function(v) ESP_CONFIG.BoxEnabled = v end)
-MakeToggle("Names",        92, true,  function(v) ESP_CONFIG.NameEnabled = v end)
-MakeToggle("Distance",    126, true,  function(v) ESP_CONFIG.DistanceEnabled = v end)
-MakeToggle("Health Bar",  160, true,  function(v) ESP_CONFIG.HealthBarEnabled = v end)
+MakeToggle("ESP Enabled",   24,  false, function(v) ESP_CONFIG.Enabled = v end)
+MakeToggle("Boxes",         58,  true,  function(v) ESP_CONFIG.BoxEnabled = v end)
+MakeToggle("Names",         92,  true,  function(v) ESP_CONFIG.NameEnabled = v end)
+MakeToggle("Distance",      126, true,  function(v) ESP_CONFIG.DistanceEnabled = v end)
+MakeToggle("Health Bar",    160, true,  function(v) ESP_CONFIG.HealthBarEnabled = v end)
 
--- Movement Section
 MakeSection("— Movement", 198)
-MakeToggle("Fly",         216, false, function(v) STATE.FlyEnabled = v end)
-MakeSlider("Speed",       250, 16, 200, 16, function(v)
+MakeToggle("Fly",           216, false, function(v) STATE.FlyEnabled = v end)
+MakeToggle("NoClip",        250, false, function(v) STATE.NoClip = v end)
+MakeSlider("Speed",         288, 16, 250, 16, function(v)
     STATE.WalkSpeed = v
-    local char = LocalPlayer.Character
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = v end
 end)
+MakeSlider("Fly Speed",     336, 10, 150, 40, function(v)
+    STATE.FlySpeed = v
+end)
 
--- God Mode
-MakeSection("— Player", 302)
-MakeToggle("God Mode", 320, false, function(v)
+MakeSection("— Player", 386)
+MakeToggle("God Mode", 404, false, function(v)
     STATE.GodEnabled = v
-    local char = LocalPlayer.Character
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then
-        if v then
-            hum.MaxHealth = math.huge
-            hum.Health    = math.huge
-        else
-            hum.MaxHealth = 100
-            hum.Health    = 100
-        end
+        hum.MaxHealth = v and math.huge or 100
+        hum.Health    = v and math.huge or 100
     end
 end)
 
--- Teleport Section
-MakeSection("— Teleport", 356)
-MakeTpButton("⬆  Teleport to Sky", 374, function()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+MakeSection("— Teleport", 438)
+MakeTpButton("⬆  Teleport to Sky", 456, function()
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if root then root.CFrame = root.CFrame + Vector3.new(0, 500, 0) end
 end)
 
@@ -353,75 +319,86 @@ end)
 UserInputService.InputChanged:Connect(function(i)
     if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
         local d = i.Position - dragStart
-        mainFrame.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + d.X,
-            startPos.Y.Scale, startPos.Y.Offset + d.Y
-        )
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
     end
 end)
 
 -- ================================================
---   FLY
+--   FLY — humanoid-based (less detectable)
 -- ================================================
-local flyConnection
-local bodyGyro, bodyVel
+local flyPart = nil
 
 RunService.RenderStepped:Connect(function()
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not char or not hum or not root then return end
+
+    -- FLY
     if STATE.FlyEnabled then
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local hum  = char and char:FindFirstChildOfClass("Humanoid")
-        if not root or not hum then return end
+        hum.PlatformStand = false
 
-        hum.PlatformStand = true
+        if not flyPart or not flyPart.Parent then
+            flyPart = Instance.new("Part")
+            flyPart.Size = Vector3.new(1, 1, 1)
+            flyPart.Transparency = 1
+            flyPart.CanCollide = false
+            flyPart.Anchored = false
+            flyPart.Name = "VenzFlyPart"
 
-        if not root:FindFirstChild("VenzGyro") then
-            bodyGyro = Instance.new("BodyGyro")
-            bodyGyro.Name = "VenzGyro"
-            bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-            bodyGyro.P = 9e4
-            bodyGyro.Parent = root
+            local bv = Instance.new("BodyVelocity", flyPart)
+            bv.Name = "FlyVel"
+            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            bv.Velocity = Vector3.zero
+
+            local bg = Instance.new("BodyGyro", flyPart)
+            bg.Name = "FlyGyro"
+            bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            bg.P = 9e4
+
+            flyPart.Parent = workspace
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = root
+            weld.Part1 = flyPart
+            weld.Parent = flyPart
         end
-        if not root:FindFirstChild("VenzVel") then
-            bodyVel = Instance.new("BodyVelocity")
-            bodyVel.Name = "VenzVel"
-            bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-            bodyVel.Velocity = Vector3.zero
-            bodyVel.Parent = root
-        end
 
-        local gyro = root:FindFirstChild("VenzGyro")
-        local vel  = root:FindFirstChild("VenzVel")
-        if not gyro or not vel then return end
+        local bv  = flyPart:FindFirstChild("FlyVel")
+        local bg  = flyPart:FindFirstChild("FlyGyro")
+        if not bv or not bg then return end
 
-        gyro.CFrame = Camera.CFrame
-        local speed = 60
-        local move  = Vector3.zero
+        bg.CFrame = Camera.CFrame
 
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
+        local move = Vector3.zero
+        local spd  = STATE.FlySpeed
+        if UserInputService:IsKeyDown(Enum.KeyCode.W)          then move = move + Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S)          then move = move - Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A)          then move = move - Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D)          then move = move + Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)      then move = move + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)  then move = move - Vector3.new(0,1,0) end
 
-        vel.Velocity = move.Magnitude > 0 and move.Unit * speed or Vector3.zero
+        bv.Velocity = move.Magnitude > 0 and (move.Unit * spd) or Vector3.zero
     else
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local hum  = char and char:FindFirstChildOfClass("Humanoid")
-        if root then
-            local g = root:FindFirstChild("VenzGyro")
-            local v = root:FindFirstChild("VenzVel")
-            if g then g:Destroy() end
-            if v then v:Destroy() end
+        if flyPart and flyPart.Parent then
+            flyPart:Destroy()
+            flyPart = nil
         end
         if hum then hum.PlatformStand = false end
     end
+
+    -- NOCLIP
+    if STATE.NoClip then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
 end)
 
 -- ================================================
---   GOD MODE — re-apply on respawn
+--   GOD MODE + STAT REAPPLY ON RESPAWN
 -- ================================================
 LocalPlayer.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid")
@@ -433,7 +410,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ================================================
---   ESP DRAWING
+--   ESP
 -- ================================================
 local ESPObjects = {}
 
@@ -469,12 +446,12 @@ local function GetBoundingBox(character)
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
     local pos = root.Position
-    local halfW, halfH = 1.5, 3.0
+    local hw, hh = 1.5, 3.0
     local corners = {
-        Vector3.new(halfW,halfH,halfW),  Vector3.new(-halfW,halfH,halfW),
-        Vector3.new(halfW,-halfH,halfW), Vector3.new(-halfW,-halfH,halfW),
-        Vector3.new(halfW,halfH,-halfW), Vector3.new(-halfW,halfH,-halfW),
-        Vector3.new(halfW,-halfH,-halfW),Vector3.new(-halfW,-halfH,-halfW),
+        Vector3.new(hw,hh,hw),   Vector3.new(-hw,hh,hw),
+        Vector3.new(hw,-hh,hw),  Vector3.new(-hw,-hh,hw),
+        Vector3.new(hw,hh,-hw),  Vector3.new(-hw,hh,-hw),
+        Vector3.new(hw,-hh,-hw), Vector3.new(-hw,-hh,-hw),
     }
     local minX,minY,maxX,maxY = math.huge,math.huge,-math.huge,-math.huge
     for _,o in ipairs(corners) do
@@ -485,7 +462,7 @@ local function GetBoundingBox(character)
         end
     end
     if minX==math.huge then return nil end
-    local st,on = Camera:WorldToViewportPoint(pos+Vector3.new(0,halfH,0))
+    local _,on = Camera:WorldToViewportPoint(pos+Vector3.new(0,hh,0))
     return {MinX=minX,MinY=minY,MaxX=maxX,MaxY=maxY,OnScreen=on}
 end
 
