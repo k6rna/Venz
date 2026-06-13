@@ -1,329 +1,544 @@
 -- ================================================
---   Roblox Multiplayer ESP Script
---   Features: Names, Distance, Health Bars, Boxes
+--   Venz | Hacker Playground Script
+--   Features: ESP, Fly, Speed, Teleport, God Mode
 -- ================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local Camera = workspace.CurrentCamera
-
 local LocalPlayer = Players.LocalPlayer
 
 -- ================================================
---   CONFIG
+--   ESP CONFIG
 -- ================================================
 local ESP_CONFIG = {
-    Enabled       = true,
-    MaxDistance   = 1000,   -- studs; beyond this ESP is hidden
-
-    -- Box
-    BoxEnabled    = true,
-    BoxColor      = Color3.fromRGB(255, 0, 0),
-    BoxThickness  = 1,
-
-    -- Name
-    NameEnabled   = true,
-    NameColor     = Color3.fromRGB(255, 255, 255),
-    NameSize      = 14,
-
-    -- Distance
-    DistanceEnabled = true,
-    DistanceColor   = Color3.fromRGB(200, 200, 200),
-
-    -- Health Bar
-    HealthBarEnabled    = true,
-    HealthBarWidth      = 4,
-    HealthColorHigh     = Color3.fromRGB(0, 255, 0),
-    HealthColorMid      = Color3.fromRGB(255, 165, 0),
-    HealthColorLow      = Color3.fromRGB(255, 0, 0),
+    Enabled          = false,
+    MaxDistance      = 1000,
+    BoxEnabled       = true,
+    BoxColor         = Color3.fromRGB(255, 0, 0),
+    BoxThickness     = 1,
+    NameEnabled      = true,
+    NameColor        = Color3.fromRGB(255, 255, 255),
+    NameSize         = 14,
+    DistanceEnabled  = true,
+    DistanceColor    = Color3.fromRGB(200, 200, 200),
+    HealthBarEnabled = true,
+    HealthBarWidth   = 4,
+    HealthColorHigh  = Color3.fromRGB(0, 255, 0),
+    HealthColorMid   = Color3.fromRGB(255, 165, 0),
+    HealthColorLow   = Color3.fromRGB(255, 0, 0),
 }
 
 -- ================================================
---   DRAWING UTILITIES
+--   PLAYER STATE
 -- ================================================
-local function NewDrawing(type, props)
-    local obj = Drawing.new(type)
-    for k, v in pairs(props) do
-        obj[k] = v
-    end
-    return obj
+local STATE = {
+    FlyEnabled  = false,
+    GodEnabled  = false,
+    WalkSpeed   = 16,
+}
+
+-- ================================================
+--   GUI SETUP
+-- ================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "VenzGUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = game.CoreGui
+
+-- Main frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 220, 0, 380)
+mainFrame.Position = UDim2.new(0, 20, 0, 20)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Parent = screenGui
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+-- Drop shadow effect
+local shadow = Instance.new("Frame")
+shadow.Size = UDim2.new(1, 10, 1, 10)
+shadow.Position = UDim2.new(0, -5, 0, -5)
+shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+shadow.BackgroundTransparency = 0.6
+shadow.BorderSizePixel = 0
+shadow.ZIndex = mainFrame.ZIndex - 1
+shadow.Parent = mainFrame
+Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 12)
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 36)
+titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
+
+-- Title text
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 1, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "⚡  Venz"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 15
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Parent = titleBar
+
+-- Minimize button
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 28, 0, 28)
+minBtn.Position = UDim2.new(1, -32, 0.5, -14)
+minBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+minBtn.Text = "−"
+minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minBtn.TextSize = 16
+minBtn.Font = Enum.Font.GothamBold
+minBtn.BorderSizePixel = 0
+minBtn.Parent = titleBar
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
+
+-- Content frame
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.Size = UDim2.new(1, 0, 1, -36)
+content.Position = UDim2.new(0, 0, 0, 36)
+content.BackgroundTransparency = 1
+content.Parent = mainFrame
+
+-- Minimize logic
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    content.Visible = not minimized
+    mainFrame.Size = minimized and UDim2.new(0, 220, 0, 36) or UDim2.new(0, 220, 0, 380)
+    minBtn.Text = minimized and "+" or "−"
+end)
+
+-- ================================================
+--   SECTION LABEL
+-- ================================================
+local function MakeSection(text, yPos)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -20, 0, 18)
+    lbl.Position = UDim2.new(0, 10, 0, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(120, 120, 120)
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = content
 end
 
 -- ================================================
---   ESP STORAGE
+--   TOGGLE BUILDER
 -- ================================================
-local ESPObjects = {}
+local function MakeToggle(labelText, yPos, defaultOn, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -20, 0, 30)
+    row.Position = UDim2.new(0, 10, 0, yPos)
+    row.BackgroundTransparency = 1
+    row.Parent = content
 
-local function CreateESP(player)
-    local drawings = {}
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.75, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    lbl.TextSize = 13
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
 
-    -- Bounding Box (4 lines)
-    drawings.BoxLines = {}
-    for i = 1, 4 do
-        drawings.BoxLines[i] = NewDrawing("Line", {
-            Visible   = false,
-            Color     = ESP_CONFIG.BoxColor,
-            Thickness = ESP_CONFIG.BoxThickness,
-        })
-    end
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(0, 42, 0, 22)
+    bg.Position = UDim2.new(1, -42, 0.5, -11)
+    bg.BackgroundColor3 = defaultOn and Color3.fromRGB(0, 180, 90) or Color3.fromRGB(60, 60, 60)
+    bg.BorderSizePixel = 0
+    bg.Parent = row
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
 
-    -- Name Label
-    drawings.NameLabel = NewDrawing("Text", {
-        Visible  = false,
-        Text     = "",
-        Color    = ESP_CONFIG.NameColor,
-        Size     = ESP_CONFIG.NameSize,
-        Center   = true,
-        Outline  = true,
-        OutlineColor = Color3.fromRGB(0, 0, 0),
-    })
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 18, 0, 18)
+    knob.Position = defaultOn and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
+    knob.Parent = bg
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
-    -- Distance Label
-    drawings.DistLabel = NewDrawing("Text", {
-        Visible  = false,
-        Text     = "",
-        Color    = ESP_CONFIG.DistanceColor,
-        Size     = ESP_CONFIG.NameSize - 2,
-        Center   = true,
-        Outline  = true,
-        OutlineColor = Color3.fromRGB(0, 0, 0),
-    })
+    local state = defaultOn
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = row
 
-    -- Health Bar (background + fill)
-    drawings.HealthBG = NewDrawing("Line", {
-        Visible   = false,
-        Color     = Color3.fromRGB(0, 0, 0),
-        Thickness = ESP_CONFIG.HealthBarWidth + 2,
-    })
-    drawings.HealthFill = NewDrawing("Line", {
-        Visible   = false,
-        Color     = ESP_CONFIG.HealthColorHigh,
-        Thickness = ESP_CONFIG.HealthBarWidth,
-    })
-
-    ESPObjects[player] = drawings
-end
-
-local function RemoveESP(player)
-    local drawings = ESPObjects[player]
-    if not drawings then return end
-
-    for _, line in ipairs(drawings.BoxLines or {}) do
-        line:Remove()
-    end
-    if drawings.NameLabel  then drawings.NameLabel:Remove()  end
-    if drawings.DistLabel  then drawings.DistLabel:Remove()  end
-    if drawings.HealthBG   then drawings.HealthBG:Remove()   end
-    if drawings.HealthFill then drawings.HealthFill:Remove() end
-
-    ESPObjects[player] = nil
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        bg.BackgroundColor3 = state and Color3.fromRGB(0, 180, 90) or Color3.fromRGB(60, 60, 60)
+        knob.Position = state and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+        callback(state)
+    end)
 end
 
 -- ================================================
---   WORLD TO SCREEN BOX
+--   SLIDER BUILDER
 -- ================================================
-local function GetBoundingBox(character)
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return nil end
+local function MakeSlider(labelText, yPos, min, max, default, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -20, 0, 44)
+    container.Position = UDim2.new(0, 10, 0, yPos)
+    container.BackgroundTransparency = 1
+    container.Parent = content
 
-    -- Approximate character bounds (studs)
-    local halfW = 1.5
-    local halfH = 3.0
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.7, 0, 0, 18)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    lbl.TextSize = 13
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = container
 
-    local pos    = rootPart.Position
-    local top    = pos + Vector3.new(0, halfH, 0)
-    local bottom = pos - Vector3.new(0, halfH, 0)
+    local valLabel = Instance.new("TextLabel")
+    valLabel.Size = UDim2.new(0.3, 0, 0, 18)
+    valLabel.Position = UDim2.new(0.7, 0, 0, 0)
+    valLabel.BackgroundTransparency = 1
+    valLabel.Text = tostring(default)
+    valLabel.TextColor3 = Color3.fromRGB(0, 180, 90)
+    valLabel.TextSize = 13
+    valLabel.Font = Enum.Font.GothamBold
+    valLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valLabel.Parent = container
 
-    -- Project 8 corners of the bounding box
-    local corners = {
-        Vector3.new( halfW, halfH,  halfW),
-        Vector3.new(-halfW, halfH,  halfW),
-        Vector3.new( halfW,-halfH,  halfW),
-        Vector3.new(-halfW,-halfH,  halfW),
-        Vector3.new( halfW, halfH, -halfW),
-        Vector3.new(-halfW, halfH, -halfW),
-        Vector3.new( halfW,-halfH, -halfW),
-        Vector3.new(-halfW,-halfH, -halfW),
-    }
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, 0, 0, 6)
+    track.Position = UDim2.new(0, 0, 0, 26)
+    track.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    track.BorderSizePixel = 0
+    track.Parent = container
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
-    local minX, minY =  math.huge,  math.huge
-    local maxX, maxY = -math.huge, -math.huge
+    local pct = (default - min) / (max - min)
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(pct, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(0, 180, 90)
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
-    for _, offset in ipairs(corners) do
-        local worldPos = pos + offset
-        local screenPos, onScreen = Camera:WorldToViewportPoint(worldPos)
-        if onScreen then
-            minX = math.min(minX, screenPos.X)
-            minY = math.min(minY, screenPos.Y)
-            maxX = math.max(maxX, screenPos.X)
-            maxY = math.max(maxY, screenPos.Y)
+    local dragging = false
+    local trackBtn = Instance.new("TextButton")
+    trackBtn.Size = UDim2.new(1, 0, 0, 20)
+    trackBtn.Position = UDim2.new(0, 0, 0, 18)
+    trackBtn.BackgroundTransparency = 1
+    trackBtn.Text = ""
+    trackBtn.Parent = container
+
+    local function update(inputX)
+        local abs = track.AbsolutePosition.X
+        local w   = track.AbsoluteSize.X
+        local p   = math.clamp((inputX - abs) / w, 0, 1)
+        local val = math.floor(min + (max - min) * p)
+        fill.Size = UDim2.new(p, 0, 1, 0)
+        valLabel.Text = tostring(val)
+        callback(val)
+    end
+
+    trackBtn.MouseButton1Down:Connect(function() dragging = true end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+            update(i.Position.X)
         end
-    end
-
-    if minX == math.huge then return nil end
-
-    local screenTop, onScreenTop = Camera:WorldToViewportPoint(top)
-    local screenBot, onScreenBot = Camera:WorldToViewportPoint(bottom)
-
-    return {
-        MinX = minX, MinY = minY,
-        MaxX = maxX, MaxY = maxY,
-        ScreenTop = Vector2.new(screenTop.X, screenTop.Y),
-        ScreenBot = Vector2.new(screenBot.X, screenBot.Y),
-        OnScreen  = onScreenTop or onScreenBot,
-    }
+    end)
+    trackBtn.MouseButton1Click:Connect(function()
+        update(UserInputService:GetMouseLocation().X)
+    end)
 end
 
 -- ================================================
---   HEALTH COLOR
+--   TELEPORT BUTTON BUILDER
 -- ================================================
-local function GetHealthColor(pct)
-    if pct > 0.6 then
-        return ESP_CONFIG.HealthColorHigh
-    elseif pct > 0.3 then
-        return ESP_CONFIG.HealthColorMid
-    else
-        return ESP_CONFIG.HealthColorLow
-    end
+local function MakeTpButton(labelText, yPos, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -20, 0, 30)
+    btn.Position = UDim2.new(0, 10, 0, yPos)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    btn.Text = labelText
+    btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.Gotham
+    btn.BorderSizePixel = 0
+    btn.Parent = content
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    btn.MouseButton1Click:Connect(callback)
+
+    btn.MouseEnter:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(0, 180, 90)
+    end)
+    btn.MouseLeave:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    end)
 end
 
 -- ================================================
---   UPDATE LOOP
+--   BUILD UI
 -- ================================================
-RunService.RenderStepped:Connect(function()
-    if not ESP_CONFIG.Enabled then
-        for player, drawings in pairs(ESPObjects) do
-            for _, line in ipairs(drawings.BoxLines or {}) do line.Visible = false end
-            drawings.NameLabel.Visible  = false
-            drawings.DistLabel.Visible  = false
-            drawings.HealthBG.Visible   = false
-            drawings.HealthFill.Visible = false
-        end
-        return
-    end
 
-    for player, drawings in pairs(ESPObjects) do
-        local hide = function()
-            for _, line in ipairs(drawings.BoxLines) do line.Visible = false end
-            drawings.NameLabel.Visible  = false
-            drawings.DistLabel.Visible  = false
-            drawings.HealthBG.Visible   = false
-            drawings.HealthFill.Visible = false
-        end
+-- ESP Section
+MakeSection("— ESP", 6)
+MakeToggle("ESP Enabled",  24, false, function(v) ESP_CONFIG.Enabled = v end)
+MakeToggle("Boxes",        58, true,  function(v) ESP_CONFIG.BoxEnabled = v end)
+MakeToggle("Names",        92, true,  function(v) ESP_CONFIG.NameEnabled = v end)
+MakeToggle("Distance",    126, true,  function(v) ESP_CONFIG.DistanceEnabled = v end)
+MakeToggle("Health Bar",  160, true,  function(v) ESP_CONFIG.HealthBarEnabled = v end)
 
-        -- Skip local player
-        if player == LocalPlayer then hide() continue end
+-- Movement Section
+MakeSection("— Movement", 198)
+MakeToggle("Fly",         216, false, function(v) STATE.FlyEnabled = v end)
+MakeSlider("Speed",       250, 16, 200, 16, function(v)
+    STATE.WalkSpeed = v
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = v end
+end)
 
-        local character  = player.Character
-        local humanoid   = character and character:FindFirstChildOfClass("Humanoid")
-        local rootPart   = character and character:FindFirstChild("HumanoidRootPart")
-
-        if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
-            hide() continue
-        end
-
-        -- Distance check
-        local localChar = LocalPlayer.Character
-        local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
-        if not localRoot then hide() continue end
-
-        local distance = (rootPart.Position - localRoot.Position).Magnitude
-        if distance > ESP_CONFIG.MaxDistance then hide() continue end
-
-        local box = GetBoundingBox(character)
-        if not box or not box.OnScreen then hide() continue end
-
-        local bx1, by1 = box.MinX, box.MinY
-        local bx2, by2 = box.MaxX, box.MaxY
-        local bw = bx2 - bx1
-        local bh = by2 - by1
-
-        -- ---- BOX ----
-        if ESP_CONFIG.BoxEnabled then
-            local lines = drawings.BoxLines
-            -- Top
-            lines[1].From    = Vector2.new(bx1, by1)
-            lines[1].To      = Vector2.new(bx2, by1)
-            lines[1].Visible = true
-            -- Bottom
-            lines[2].From    = Vector2.new(bx1, by2)
-            lines[2].To      = Vector2.new(bx2, by2)
-            lines[2].Visible = true
-            -- Left
-            lines[3].From    = Vector2.new(bx1, by1)
-            lines[3].To      = Vector2.new(bx1, by2)
-            lines[3].Visible = true
-            -- Right
-            lines[4].From    = Vector2.new(bx2, by1)
-            lines[4].To      = Vector2.new(bx2, by2)
-            lines[4].Visible = true
+-- God Mode
+MakeSection("— Player", 302)
+MakeToggle("God Mode", 320, false, function(v)
+    STATE.GodEnabled = v
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        if v then
+            hum.MaxHealth = math.huge
+            hum.Health    = math.huge
         else
-            for _, l in ipairs(drawings.BoxLines) do l.Visible = false end
-        end
-
-        -- ---- NAME ----
-        if ESP_CONFIG.NameEnabled then
-            drawings.NameLabel.Text     = player.DisplayName
-            drawings.NameLabel.Position = Vector2.new((bx1 + bx2) / 2, by1 - 18)
-            drawings.NameLabel.Visible  = true
-        else
-            drawings.NameLabel.Visible = false
-        end
-
-        -- ---- DISTANCE ----
-        if ESP_CONFIG.DistanceEnabled then
-            drawings.DistLabel.Text     = string.format("[%d studs]", math.floor(distance))
-            drawings.DistLabel.Position = Vector2.new((bx1 + bx2) / 2, by1 - 4)
-            drawings.DistLabel.Visible  = true
-        else
-            drawings.DistLabel.Visible = false
-        end
-
-        -- ---- HEALTH BAR ----
-        if ESP_CONFIG.HealthBarEnabled then
-            local maxHP = humanoid.MaxHealth
-            local curHP = humanoid.Health
-            local pct   = (maxHP > 0) and math.clamp(curHP / maxHP, 0, 1) or 0
-
-            local barX  = bx1 - 6
-            local barTop    = by1
-            local barBottom = by2
-
-            drawings.HealthBG.From    = Vector2.new(barX, barTop)
-            drawings.HealthBG.To      = Vector2.new(barX, barBottom)
-            drawings.HealthBG.Visible = true
-
-            local fillBottom = barBottom
-            local fillTop    = barBottom - (bh * pct)
-
-            drawings.HealthFill.From    = Vector2.new(barX, fillTop)
-            drawings.HealthFill.To      = Vector2.new(barX, fillBottom)
-            drawings.HealthFill.Color   = GetHealthColor(pct)
-            drawings.HealthFill.Visible = true
-        else
-            drawings.HealthBG.Visible   = false
-            drawings.HealthFill.Visible = false
+            hum.MaxHealth = 100
+            hum.Health    = 100
         end
     end
 end)
 
+-- Teleport Section
+MakeSection("— Teleport", 356)
+MakeTpButton("⬆  Teleport to Sky", 374, function()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then root.CFrame = root.CFrame + Vector3.new(0, 500, 0) end
+end)
+
 -- ================================================
---   PLAYER MANAGEMENT
+--   DRAGGABLE
 -- ================================================
-local function OnPlayerAdded(player)
-    CreateESP(player)
+local dragging, dragStart, startPos = false, nil, nil
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = i.Position; startPos = mainFrame.Position
+    end
+end)
+titleBar.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = i.Position - dragStart
+        mainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + d.X,
+            startPos.Y.Scale, startPos.Y.Offset + d.Y
+        )
+    end
+end)
+
+-- ================================================
+--   FLY
+-- ================================================
+local flyConnection
+local bodyGyro, bodyVel
+
+RunService.RenderStepped:Connect(function()
+    if STATE.FlyEnabled then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if not root or not hum then return end
+
+        hum.PlatformStand = true
+
+        if not root:FindFirstChild("VenzGyro") then
+            bodyGyro = Instance.new("BodyGyro")
+            bodyGyro.Name = "VenzGyro"
+            bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            bodyGyro.P = 9e4
+            bodyGyro.Parent = root
+        end
+        if not root:FindFirstChild("VenzVel") then
+            bodyVel = Instance.new("BodyVelocity")
+            bodyVel.Name = "VenzVel"
+            bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            bodyVel.Velocity = Vector3.zero
+            bodyVel.Parent = root
+        end
+
+        local gyro = root:FindFirstChild("VenzGyro")
+        local vel  = root:FindFirstChild("VenzVel")
+        if not gyro or not vel then return end
+
+        gyro.CFrame = Camera.CFrame
+        local speed = 60
+        local move  = Vector3.zero
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
+
+        vel.Velocity = move.Magnitude > 0 and move.Unit * speed or Vector3.zero
+    else
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if root then
+            local g = root:FindFirstChild("VenzGyro")
+            local v = root:FindFirstChild("VenzVel")
+            if g then g:Destroy() end
+            if v then v:Destroy() end
+        end
+        if hum then hum.PlatformStand = false end
+    end
+end)
+
+-- ================================================
+--   GOD MODE — re-apply on respawn
+-- ================================================
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid")
+    if STATE.GodEnabled then
+        hum.MaxHealth = math.huge
+        hum.Health    = math.huge
+    end
+    hum.WalkSpeed = STATE.WalkSpeed
+end)
+
+-- ================================================
+--   ESP DRAWING
+-- ================================================
+local ESPObjects = {}
+
+local function NewDrawing(t, props)
+    local o = Drawing.new(t)
+    for k,v in pairs(props) do o[k]=v end
+    return o
 end
 
-local function OnPlayerRemoving(player)
-    RemoveESP(player)
+local function CreateESP(player)
+    local d = {}
+    d.BoxLines = {}
+    for i=1,4 do
+        d.BoxLines[i] = NewDrawing("Line",{Visible=false,Color=ESP_CONFIG.BoxColor,Thickness=ESP_CONFIG.BoxThickness})
+    end
+    d.NameLabel  = NewDrawing("Text",{Visible=false,Text="",Color=ESP_CONFIG.NameColor,Size=ESP_CONFIG.NameSize,Center=true,Outline=true,OutlineColor=Color3.fromRGB(0,0,0)})
+    d.DistLabel  = NewDrawing("Text",{Visible=false,Text="",Color=ESP_CONFIG.DistanceColor,Size=ESP_CONFIG.NameSize-2,Center=true,Outline=true,OutlineColor=Color3.fromRGB(0,0,0)})
+    d.HealthBG   = NewDrawing("Line",{Visible=false,Color=Color3.fromRGB(0,0,0),Thickness=ESP_CONFIG.HealthBarWidth+2})
+    d.HealthFill = NewDrawing("Line",{Visible=false,Color=ESP_CONFIG.HealthColorHigh,Thickness=ESP_CONFIG.HealthBarWidth})
+    ESPObjects[player] = d
 end
 
--- Hook existing players
-for _, player in ipairs(Players:GetPlayers()) do
-    OnPlayerAdded(player)
+local function RemoveESP(player)
+    local d = ESPObjects[player]
+    if not d then return end
+    for _,l in ipairs(d.BoxLines) do l:Remove() end
+    d.NameLabel:Remove(); d.DistLabel:Remove()
+    d.HealthBG:Remove();  d.HealthFill:Remove()
+    ESPObjects[player] = nil
 end
 
-Players.PlayerAdded:Connect(OnPlayerAdded)
-Players.PlayerRemoving:Connect(OnPlayerRemoving)
+local function GetBoundingBox(character)
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local pos = root.Position
+    local halfW, halfH = 1.5, 3.0
+    local corners = {
+        Vector3.new(halfW,halfH,halfW),  Vector3.new(-halfW,halfH,halfW),
+        Vector3.new(halfW,-halfH,halfW), Vector3.new(-halfW,-halfH,halfW),
+        Vector3.new(halfW,halfH,-halfW), Vector3.new(-halfW,halfH,-halfW),
+        Vector3.new(halfW,-halfH,-halfW),Vector3.new(-halfW,-halfH,-halfW),
+    }
+    local minX,minY,maxX,maxY = math.huge,math.huge,-math.huge,-math.huge
+    for _,o in ipairs(corners) do
+        local sp,on = Camera:WorldToViewportPoint(pos+o)
+        if on then
+            minX=math.min(minX,sp.X); minY=math.min(minY,sp.Y)
+            maxX=math.max(maxX,sp.X); maxY=math.max(maxY,sp.Y)
+        end
+    end
+    if minX==math.huge then return nil end
+    local st,on = Camera:WorldToViewportPoint(pos+Vector3.new(0,halfH,0))
+    return {MinX=minX,MinY=minY,MaxX=maxX,MaxY=maxY,OnScreen=on}
+end
 
-print("[ESP] Loaded successfully. Players tracked: " .. #Players:GetPlayers())
+RunService.RenderStepped:Connect(function()
+    for player, d in pairs(ESPObjects) do
+        local function hide()
+            for _,l in ipairs(d.BoxLines) do l.Visible=false end
+            d.NameLabel.Visible=false; d.DistLabel.Visible=false
+            d.HealthBG.Visible=false;  d.HealthFill.Visible=false
+        end
+        if not ESP_CONFIG.Enabled or player==LocalPlayer then hide() continue end
+        local char = player.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not char or not hum or not root or hum.Health<=0 then hide() continue end
+        local lr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not lr then hide() continue end
+        local dist = (root.Position - lr.Position).Magnitude
+        if dist > ESP_CONFIG.MaxDistance then hide() continue end
+        local box = GetBoundingBox(char)
+        if not box or not box.OnScreen then hide() continue end
+        local bx1,by1,bx2,by2 = box.MinX,box.MinY,box.MaxX,box.MaxY
+        local bh = by2-by1
+        if ESP_CONFIG.BoxEnabled then
+            local L=d.BoxLines
+            L[1].From=Vector2.new(bx1,by1); L[1].To=Vector2.new(bx2,by1); L[1].Visible=true
+            L[2].From=Vector2.new(bx1,by2); L[2].To=Vector2.new(bx2,by2); L[2].Visible=true
+            L[3].From=Vector2.new(bx1,by1); L[3].To=Vector2.new(bx1,by2); L[3].Visible=true
+            L[4].From=Vector2.new(bx2,by1); L[4].To=Vector2.new(bx2,by2); L[4].Visible=true
+        else for _,l in ipairs(d.BoxLines) do l.Visible=false end end
+        if ESP_CONFIG.NameEnabled then
+            d.NameLabel.Text=player.DisplayName
+            d.NameLabel.Position=Vector2.new((bx1+bx2)/2,by1-18)
+            d.NameLabel.Visible=true
+        else d.NameLabel.Visible=false end
+        if ESP_CONFIG.DistanceEnabled then
+            d.DistLabel.Text=string.format("[%d studs]",math.floor(dist))
+            d.DistLabel.Position=Vector2.new((bx1+bx2)/2,by1-4)
+            d.DistLabel.Visible=true
+        else d.DistLabel.Visible=false end
+        if ESP_CONFIG.HealthBarEnabled then
+            local pct=math.clamp(hum.Health/math.max(hum.MaxHealth,1),0,1)
+            local barX=bx1-6
+            d.HealthBG.From=Vector2.new(barX,by1); d.HealthBG.To=Vector2.new(barX,by2); d.HealthBG.Visible=true
+            d.HealthFill.From=Vector2.new(barX,by2-bh*pct); d.HealthFill.To=Vector2.new(barX,by2)
+            d.HealthFill.Color=pct>0.6 and ESP_CONFIG.HealthColorHigh or pct>0.3 and ESP_CONFIG.HealthColorMid or ESP_CONFIG.HealthColorLow
+            d.HealthFill.Visible=true
+        else d.HealthBG.Visible=false; d.HealthFill.Visible=false end
+    end
+end)
+
+for _,p in ipairs(Players:GetPlayers()) do CreateESP(p) end
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(RemoveESP)
+
+print("[Venz] Loaded successfully!")
