@@ -1,0 +1,329 @@
+-- ================================================
+--   Roblox Multiplayer ESP Script
+--   Features: Names, Distance, Health Bars, Boxes
+-- ================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ================================================
+--   CONFIG
+-- ================================================
+local ESP_CONFIG = {
+    Enabled       = true,
+    MaxDistance   = 1000,   -- studs; beyond this ESP is hidden
+
+    -- Box
+    BoxEnabled    = true,
+    BoxColor      = Color3.fromRGB(255, 0, 0),
+    BoxThickness  = 1,
+
+    -- Name
+    NameEnabled   = true,
+    NameColor     = Color3.fromRGB(255, 255, 255),
+    NameSize      = 14,
+
+    -- Distance
+    DistanceEnabled = true,
+    DistanceColor   = Color3.fromRGB(200, 200, 200),
+
+    -- Health Bar
+    HealthBarEnabled    = true,
+    HealthBarWidth      = 4,
+    HealthColorHigh     = Color3.fromRGB(0, 255, 0),
+    HealthColorMid      = Color3.fromRGB(255, 165, 0),
+    HealthColorLow      = Color3.fromRGB(255, 0, 0),
+}
+
+-- ================================================
+--   DRAWING UTILITIES
+-- ================================================
+local function NewDrawing(type, props)
+    local obj = Drawing.new(type)
+    for k, v in pairs(props) do
+        obj[k] = v
+    end
+    return obj
+end
+
+-- ================================================
+--   ESP STORAGE
+-- ================================================
+local ESPObjects = {}
+
+local function CreateESP(player)
+    local drawings = {}
+
+    -- Bounding Box (4 lines)
+    drawings.BoxLines = {}
+    for i = 1, 4 do
+        drawings.BoxLines[i] = NewDrawing("Line", {
+            Visible   = false,
+            Color     = ESP_CONFIG.BoxColor,
+            Thickness = ESP_CONFIG.BoxThickness,
+        })
+    end
+
+    -- Name Label
+    drawings.NameLabel = NewDrawing("Text", {
+        Visible  = false,
+        Text     = "",
+        Color    = ESP_CONFIG.NameColor,
+        Size     = ESP_CONFIG.NameSize,
+        Center   = true,
+        Outline  = true,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+    })
+
+    -- Distance Label
+    drawings.DistLabel = NewDrawing("Text", {
+        Visible  = false,
+        Text     = "",
+        Color    = ESP_CONFIG.DistanceColor,
+        Size     = ESP_CONFIG.NameSize - 2,
+        Center   = true,
+        Outline  = true,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+    })
+
+    -- Health Bar (background + fill)
+    drawings.HealthBG = NewDrawing("Line", {
+        Visible   = false,
+        Color     = Color3.fromRGB(0, 0, 0),
+        Thickness = ESP_CONFIG.HealthBarWidth + 2,
+    })
+    drawings.HealthFill = NewDrawing("Line", {
+        Visible   = false,
+        Color     = ESP_CONFIG.HealthColorHigh,
+        Thickness = ESP_CONFIG.HealthBarWidth,
+    })
+
+    ESPObjects[player] = drawings
+end
+
+local function RemoveESP(player)
+    local drawings = ESPObjects[player]
+    if not drawings then return end
+
+    for _, line in ipairs(drawings.BoxLines or {}) do
+        line:Remove()
+    end
+    if drawings.NameLabel  then drawings.NameLabel:Remove()  end
+    if drawings.DistLabel  then drawings.DistLabel:Remove()  end
+    if drawings.HealthBG   then drawings.HealthBG:Remove()   end
+    if drawings.HealthFill then drawings.HealthFill:Remove() end
+
+    ESPObjects[player] = nil
+end
+
+-- ================================================
+--   WORLD TO SCREEN BOX
+-- ================================================
+local function GetBoundingBox(character)
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return nil end
+
+    -- Approximate character bounds (studs)
+    local halfW = 1.5
+    local halfH = 3.0
+
+    local pos    = rootPart.Position
+    local top    = pos + Vector3.new(0, halfH, 0)
+    local bottom = pos - Vector3.new(0, halfH, 0)
+
+    -- Project 8 corners of the bounding box
+    local corners = {
+        Vector3.new( halfW, halfH,  halfW),
+        Vector3.new(-halfW, halfH,  halfW),
+        Vector3.new( halfW,-halfH,  halfW),
+        Vector3.new(-halfW,-halfH,  halfW),
+        Vector3.new( halfW, halfH, -halfW),
+        Vector3.new(-halfW, halfH, -halfW),
+        Vector3.new( halfW,-halfH, -halfW),
+        Vector3.new(-halfW,-halfH, -halfW),
+    }
+
+    local minX, minY =  math.huge,  math.huge
+    local maxX, maxY = -math.huge, -math.huge
+
+    for _, offset in ipairs(corners) do
+        local worldPos = pos + offset
+        local screenPos, onScreen = Camera:WorldToViewportPoint(worldPos)
+        if onScreen then
+            minX = math.min(minX, screenPos.X)
+            minY = math.min(minY, screenPos.Y)
+            maxX = math.max(maxX, screenPos.X)
+            maxY = math.max(maxY, screenPos.Y)
+        end
+    end
+
+    if minX == math.huge then return nil end
+
+    local screenTop, onScreenTop = Camera:WorldToViewportPoint(top)
+    local screenBot, onScreenBot = Camera:WorldToViewportPoint(bottom)
+
+    return {
+        MinX = minX, MinY = minY,
+        MaxX = maxX, MaxY = maxY,
+        ScreenTop = Vector2.new(screenTop.X, screenTop.Y),
+        ScreenBot = Vector2.new(screenBot.X, screenBot.Y),
+        OnScreen  = onScreenTop or onScreenBot,
+    }
+end
+
+-- ================================================
+--   HEALTH COLOR
+-- ================================================
+local function GetHealthColor(pct)
+    if pct > 0.6 then
+        return ESP_CONFIG.HealthColorHigh
+    elseif pct > 0.3 then
+        return ESP_CONFIG.HealthColorMid
+    else
+        return ESP_CONFIG.HealthColorLow
+    end
+end
+
+-- ================================================
+--   UPDATE LOOP
+-- ================================================
+RunService.RenderStepped:Connect(function()
+    if not ESP_CONFIG.Enabled then
+        for player, drawings in pairs(ESPObjects) do
+            for _, line in ipairs(drawings.BoxLines or {}) do line.Visible = false end
+            drawings.NameLabel.Visible  = false
+            drawings.DistLabel.Visible  = false
+            drawings.HealthBG.Visible   = false
+            drawings.HealthFill.Visible = false
+        end
+        return
+    end
+
+    for player, drawings in pairs(ESPObjects) do
+        local hide = function()
+            for _, line in ipairs(drawings.BoxLines) do line.Visible = false end
+            drawings.NameLabel.Visible  = false
+            drawings.DistLabel.Visible  = false
+            drawings.HealthBG.Visible   = false
+            drawings.HealthFill.Visible = false
+        end
+
+        -- Skip local player
+        if player == LocalPlayer then hide() continue end
+
+        local character  = player.Character
+        local humanoid   = character and character:FindFirstChildOfClass("Humanoid")
+        local rootPart   = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
+            hide() continue
+        end
+
+        -- Distance check
+        local localChar = LocalPlayer.Character
+        local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+        if not localRoot then hide() continue end
+
+        local distance = (rootPart.Position - localRoot.Position).Magnitude
+        if distance > ESP_CONFIG.MaxDistance then hide() continue end
+
+        local box = GetBoundingBox(character)
+        if not box or not box.OnScreen then hide() continue end
+
+        local bx1, by1 = box.MinX, box.MinY
+        local bx2, by2 = box.MaxX, box.MaxY
+        local bw = bx2 - bx1
+        local bh = by2 - by1
+
+        -- ---- BOX ----
+        if ESP_CONFIG.BoxEnabled then
+            local lines = drawings.BoxLines
+            -- Top
+            lines[1].From    = Vector2.new(bx1, by1)
+            lines[1].To      = Vector2.new(bx2, by1)
+            lines[1].Visible = true
+            -- Bottom
+            lines[2].From    = Vector2.new(bx1, by2)
+            lines[2].To      = Vector2.new(bx2, by2)
+            lines[2].Visible = true
+            -- Left
+            lines[3].From    = Vector2.new(bx1, by1)
+            lines[3].To      = Vector2.new(bx1, by2)
+            lines[3].Visible = true
+            -- Right
+            lines[4].From    = Vector2.new(bx2, by1)
+            lines[4].To      = Vector2.new(bx2, by2)
+            lines[4].Visible = true
+        else
+            for _, l in ipairs(drawings.BoxLines) do l.Visible = false end
+        end
+
+        -- ---- NAME ----
+        if ESP_CONFIG.NameEnabled then
+            drawings.NameLabel.Text     = player.DisplayName
+            drawings.NameLabel.Position = Vector2.new((bx1 + bx2) / 2, by1 - 18)
+            drawings.NameLabel.Visible  = true
+        else
+            drawings.NameLabel.Visible = false
+        end
+
+        -- ---- DISTANCE ----
+        if ESP_CONFIG.DistanceEnabled then
+            drawings.DistLabel.Text     = string.format("[%d studs]", math.floor(distance))
+            drawings.DistLabel.Position = Vector2.new((bx1 + bx2) / 2, by1 - 4)
+            drawings.DistLabel.Visible  = true
+        else
+            drawings.DistLabel.Visible = false
+        end
+
+        -- ---- HEALTH BAR ----
+        if ESP_CONFIG.HealthBarEnabled then
+            local maxHP = humanoid.MaxHealth
+            local curHP = humanoid.Health
+            local pct   = (maxHP > 0) and math.clamp(curHP / maxHP, 0, 1) or 0
+
+            local barX  = bx1 - 6
+            local barTop    = by1
+            local barBottom = by2
+
+            drawings.HealthBG.From    = Vector2.new(barX, barTop)
+            drawings.HealthBG.To      = Vector2.new(barX, barBottom)
+            drawings.HealthBG.Visible = true
+
+            local fillBottom = barBottom
+            local fillTop    = barBottom - (bh * pct)
+
+            drawings.HealthFill.From    = Vector2.new(barX, fillTop)
+            drawings.HealthFill.To      = Vector2.new(barX, fillBottom)
+            drawings.HealthFill.Color   = GetHealthColor(pct)
+            drawings.HealthFill.Visible = true
+        else
+            drawings.HealthBG.Visible   = false
+            drawings.HealthFill.Visible = false
+        end
+    end
+end)
+
+-- ================================================
+--   PLAYER MANAGEMENT
+-- ================================================
+local function OnPlayerAdded(player)
+    CreateESP(player)
+end
+
+local function OnPlayerRemoving(player)
+    RemoveESP(player)
+end
+
+-- Hook existing players
+for _, player in ipairs(Players:GetPlayers()) do
+    OnPlayerAdded(player)
+end
+
+Players.PlayerAdded:Connect(OnPlayerAdded)
+Players.PlayerRemoving:Connect(OnPlayerRemoving)
+
+print("[ESP] Loaded successfully. Players tracked: " .. #Players:GetPlayers())
