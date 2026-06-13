@@ -291,11 +291,6 @@ end)
 MakeSection("— Player", 386)
 MakeToggle("God Mode", 404, false, function(v)
     STATE.GodEnabled = v
-    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.MaxHealth = v and math.huge or 100
-        hum.Health    = v and math.huge or 100
-    end
 end)
 
 MakeSection("— Teleport", 438)
@@ -400,12 +395,19 @@ end)
 -- ================================================
 --   GOD MODE + STAT REAPPLY ON RESPAWN
 -- ================================================
+
+-- God mode: continuously restore health every frame so damage is undone instantly
+RunService.Heartbeat:Connect(function()
+    if not STATE.GodEnabled then return end
+    local char = LocalPlayer.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Health > 0 then
+        hum.Health = hum.MaxHealth
+    end
+end)
+
 LocalPlayer.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid")
-    if STATE.GodEnabled then
-        hum.MaxHealth = math.huge
-        hum.Health    = math.huge
-    end
     hum.WalkSpeed = STATE.WalkSpeed
 end)
 
