@@ -1,12 +1,13 @@
 -- ================================================
 --   Venz | Hacker Playground Script
---   Features: ESP, Speed, NoClip, Teleport,
---             Aimbot, Skin Changer
+--   Features: ESP, NoClip, Speed, Teleport,
+--             Aimbot, Triggerbot, Skin Changer
 -- ================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
@@ -35,16 +36,18 @@ local ESP_CONFIG = {
 --   STATE
 -- ================================================
 local STATE = {
-    NoClip        = false,
-    WalkSpeed     = 16,
-    AimbotEnabled = false,
-    AimbotTarget  = "Head",   -- "Head" | "HumanoidRootPart" | "Nearest"
-    AimbotFOV     = 120,
-    AimbotSmooth  = 5,
+    NoClip           = false,
+    WalkSpeed        = 16,
+    AimbotEnabled    = false,
+    AimbotTarget     = "Head",
+    AimbotFOV        = 120,
+    AimbotSmooth     = 5,
+    TriggerbotEnabled = false,
+    TriggerbotDelay  = 0.05,
 }
 
 -- ================================================
---   GUI SETUP
+--   GUI
 -- ================================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "VenzGUI"
@@ -107,7 +110,7 @@ content.Position = UDim2.new(0, 0, 0, 36)
 content.BackgroundTransparency = 1
 content.ScrollBarThickness = 3
 content.ScrollBarImageColor3 = Color3.fromRGB(0, 180, 90)
-content.CanvasSize = UDim2.new(0, 0, 0, 900)
+content.CanvasSize = UDim2.new(0, 0, 0, 980)
 content.Parent = mainFrame
 
 local minimized = false
@@ -289,12 +292,11 @@ local function MakeDropdown(labelText, yPos, options, callback)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = container
 
-    local selected = options[1]
     local dropBtn = Instance.new("TextButton")
     dropBtn.Size = UDim2.new(0.48,0,1,0)
     dropBtn.Position = UDim2.new(0.52,0,0,0)
     dropBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-    dropBtn.Text = selected .. " ▾"
+    dropBtn.Text = options[1] .. " ▾"
     dropBtn.TextColor3 = Color3.fromRGB(0,180,90)
     dropBtn.TextSize = 12
     dropBtn.Font = Enum.Font.GothamBold
@@ -328,7 +330,6 @@ local function MakeDropdown(labelText, yPos, options, callback)
             optBtn.Parent = content
             Instance.new("UICorner", optBtn).CornerRadius = UDim.new(0,6)
             optBtn.MouseButton1Click:Connect(function()
-                selected = opt
                 dropBtn.Text = opt .. " ▾"
                 callback(opt)
                 closeMenu()
@@ -339,7 +340,7 @@ local function MakeDropdown(labelText, yPos, options, callback)
 end
 
 -- ================================================
---   BUILD UI — ESP
+--   BUILD UI
 -- ================================================
 MakeSection("— ESP", 6)
 MakeToggle("ESP Enabled",  24,  false, function(v) ESP_CONFIG.Enabled = v end)
@@ -348,45 +349,38 @@ MakeToggle("Names",        92,  true,  function(v) ESP_CONFIG.NameEnabled = v en
 MakeToggle("Distance",     126, true,  function(v) ESP_CONFIG.DistanceEnabled = v end)
 MakeToggle("Health Bar",   160, true,  function(v) ESP_CONFIG.HealthBarEnabled = v end)
 
--- ================================================
---   BUILD UI — AIMBOT
--- ================================================
 MakeSection("— Aimbot", 200)
 MakeToggle("Aimbot",       218, false, function(v) STATE.AimbotEnabled = v end)
-MakeDropdown("Target", 252, {"Head","HumanoidRootPart","Nearest"}, function(v)
-    STATE.AimbotTarget = v
-end)
+MakeDropdown("Target",     252, {"Head","HumanoidRootPart","Nearest"}, function(v) STATE.AimbotTarget = v end)
 MakeSlider("FOV",          290, 10, 400, 120, function(v) STATE.AimbotFOV = v end)
-MakeSlider("Smoothness",   338, 1, 20, 5,    function(v) STATE.AimbotSmooth = v end)
+MakeSlider("Smoothness",   338, 1, 20, 5,     function(v) STATE.AimbotSmooth = v end)
 
--- ================================================
---   BUILD UI — MOVEMENT
--- ================================================
-MakeSection("— Movement", 392)
-MakeToggle("NoClip",       410, false, function(v) STATE.NoClip = v end)
-MakeSlider("Speed",        444, 16, 250, 16, function(v)
+MakeSection("— Triggerbot", 390)
+MakeToggle("Triggerbot",   408, false, function(v) STATE.TriggerbotEnabled = v end)
+MakeSlider("Shoot Delay",  442, 0, 20, 5, function(v) STATE.TriggerbotDelay = v/100 end)
+
+MakeSection("— Movement", 494)
+MakeToggle("NoClip",       512, false, function(v) STATE.NoClip = v end)
+MakeSlider("Speed",        546, 16, 250, 16, function(v)
     STATE.WalkSpeed = v
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = v end
 end)
 
--- ================================================
---   BUILD UI — TELEPORT
--- ================================================
-MakeSection("— Teleport", 496)
-MakeButton("⬆  Teleport to Sky", 514, function()
+MakeSection("— Teleport", 598)
+MakeButton("⬆  Teleport to Sky", 616, function()
     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if root then root.CFrame = root.CFrame + Vector3.new(0, 500, 0) end
 end)
 
 -- ================================================
---   BUILD UI — SKIN CHANGER
+--   SKIN CHANGER UI
 -- ================================================
-MakeSection("— Skin Changer", 554)
+MakeSection("— Skin Changer", 656)
 
 local scanStatusLbl = Instance.new("TextLabel")
-scanStatusLbl.Size = UDim2.new(1,-20,0,20)
-scanStatusLbl.Position = UDim2.new(0,10,0,572)
+scanStatusLbl.Size = UDim2.new(1,-20,0,32)
+scanStatusLbl.Position = UDim2.new(0,10,0,674)
 scanStatusLbl.BackgroundTransparency = 1
 scanStatusLbl.Text = "Equip a gun then press Scan"
 scanStatusLbl.TextColor3 = Color3.fromRGB(150,150,150)
@@ -395,10 +389,11 @@ scanStatusLbl.Font = Enum.Font.Gotham
 scanStatusLbl.TextWrapped = true
 scanStatusLbl.Parent = content
 
--- Scrollable skin list frame
+MakeButton("🔍 Scan Gun Textures", 706, function() end) -- filled in below
+
 local skinListFrame = Instance.new("ScrollingFrame")
-skinListFrame.Size = UDim2.new(1,-20,0,160)
-skinListFrame.Position = UDim2.new(0,10,0,636)
+skinListFrame.Size = UDim2.new(1,-20,0,150)
+skinListFrame.Position = UDim2.new(0,10,0,744)
 skinListFrame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 skinListFrame.BorderSizePixel = 0
 skinListFrame.ScrollBarThickness = 3
@@ -418,10 +413,9 @@ skinPadding.PaddingLeft = UDim.new(0,4)
 skinPadding.PaddingRight = UDim.new(0,4)
 skinPadding.Parent = skinListFrame
 
--- Input box for new texture ID
 local inputBox = Instance.new("TextBox")
 inputBox.Size = UDim2.new(1,-20,0,28)
-inputBox.Position = UDim2.new(0,10,0,804)
+inputBox.Position = UDim2.new(0,10,0,902)
 inputBox.BackgroundColor3 = Color3.fromRGB(30,30,30)
 inputBox.BorderSizePixel = 0
 inputBox.PlaceholderText = "Paste new texture ID here..."
@@ -434,46 +428,70 @@ inputBox.ClearTextOnFocus = false
 inputBox.Parent = content
 Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0,6)
 
--- Selected texture tracker
 local selectedTexture = nil
 local scannedTextures = {}
 
 local function ClearSkinList()
     for _, c in ipairs(skinListFrame:GetChildren()) do
-        if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
+        if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
     end
     scannedTextures = {}
     selectedTexture = nil
 end
 
-local function ScanGunTextures()
-    ClearSkinList()
+-- ================================================
+--   FIND GUN — searches character, backpack AND workspace
+-- ================================================
+local function FindEquippedGun()
     local char = LocalPlayer.Character
-    if not char then
-        scanStatusLbl.Text = "❌ No character found!"
-        return
-    end
 
-    -- Find equipped tool
-    local tool = nil
-    for _, obj in ipairs(char:GetChildren()) do
-        if obj:IsA("Tool") then tool = obj break end
-    end
-    if not tool then
-        -- also check backpack
-        for _, obj in ipairs(LocalPlayer.Backpack:GetChildren()) do
-            if obj:IsA("Tool") then tool = obj break end
+    -- 1. Check character first (equipped)
+    if char then
+        for _, obj in ipairs(char:GetChildren()) do
+            if obj:IsA("Tool") then return obj, "character" end
         end
     end
+
+    -- 2. Check backpack
+    for _, obj in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if obj:IsA("Tool") then return obj, "backpack" end
+    end
+
+    -- 3. Check workspace for a model that belongs to local player
+    --    (some games parent guns to workspace when dropped)
+    if char then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:IsA("Tool") or obj:IsA("Model") then
+                    -- Check if it's near the player
+                    local part = obj:FindFirstChildWhichIsA("BasePart", true)
+                    if part and (part.Position - root.Position).Magnitude < 10 then
+                        return obj, "workspace"
+                    end
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function ScanGunTextures()
+    ClearSkinList()
+
+    local tool, location = FindEquippedGun()
+
     if not tool then
-        scanStatusLbl.Text = "❌ No gun equipped! Equip a gun first."
+        scanStatusLbl.Text = "❌ No gun found! Try equipping it first."
         return
     end
 
-    scanStatusLbl.Text = "🔍 Scanning: " .. tool.Name
+    scanStatusLbl.Text = "🔍 Scanning: " .. tool.Name .. " (from " .. location .. ")"
 
-    -- Scan all descendants for textures
     local found = {}
+    local seen = {}
+
     for _, desc in ipairs(tool:GetDescendants()) do
         local texId = nil
         local obj = desc
@@ -484,36 +502,51 @@ local function ScanGunTextures()
             texId = desc.Texture
         elseif desc:IsA("Texture") and desc.Texture ~= "" then
             texId = desc.Texture
-        elseif desc:IsA("SurfaceAppearance") then
-            -- Check all maps
-            local maps = {desc.ColorMap, desc.NormalMap, desc.RoughnessMap, desc.MetalnessMap}
-            for _, map in ipairs(maps) do
-                if map ~= "" then
-                    table.insert(found, {obj = desc, id = map, name = desc.Parent.Name .. " (" .. desc.ClassName .. ")"})
-                end
-            end
         elseif desc:IsA("MeshPart") and desc.TextureID ~= "" then
             texId = desc.TextureID
             obj = desc
+        elseif desc:IsA("SurfaceAppearance") then
+            local maps = {
+                {desc.ColorMap,      "ColorMap"},
+                {desc.NormalMap,     "NormalMap"},
+                {desc.RoughnessMap,  "RoughnessMap"},
+                {desc.MetalnessMap,  "MetalnessMap"},
+            }
+            for _, map in ipairs(maps) do
+                if map[1] ~= "" and not seen[map[1]] then
+                    seen[map[1]] = true
+                    table.insert(found, {
+                        obj  = desc,
+                        id   = map[1],
+                        name = (desc.Parent and desc.Parent.Name or "?") .. " > " .. map[2],
+                        mapType = map[2],
+                    })
+                end
+            end
         end
 
-        if texId then
-            table.insert(found, {obj = obj, id = texId, name = desc.Parent.Name .. "." .. desc.Name})
+        if texId and not seen[texId] then
+            seen[texId] = true
+            table.insert(found, {
+                obj  = obj,
+                id   = texId,
+                name = (desc.Parent and desc.Parent.Name or "?") .. "." .. desc.Name,
+                mapType = nil,
+            })
         end
     end
 
     if #found == 0 then
-        scanStatusLbl.Text = "⚠️ No textures found on " .. tool.Name
+        scanStatusLbl.Text = "⚠️ No textures found on " .. tool.Name .. ". Try the other gun slot."
         return
     end
 
-    scanStatusLbl.Text = "✅ Found " .. #found .. " texture(s) on " .. tool.Name
+    scanStatusLbl.Text = "✅ " .. #found .. " texture(s) on " .. tool.Name
     scannedTextures = found
 
-    -- Build list
     for i, tex in ipairs(found) do
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1,0,0,36)
+        row.Size = UDim2.new(1,0,0,38)
         row.BackgroundColor3 = Color3.fromRGB(35,35,35)
         row.BorderSizePixel = 0
         row.AutoButtonColor = false
@@ -535,7 +568,7 @@ local function ScanGunTextures()
 
         local idLbl = Instance.new("TextLabel")
         idLbl.Size = UDim2.new(1,-8,0,14)
-        idLbl.Position = UDim2.new(0,6,0,20)
+        idLbl.Position = UDim2.new(0,6,0,22)
         idLbl.BackgroundTransparency = 1
         idLbl.Text = tex.id
         idLbl.TextColor3 = Color3.fromRGB(0,180,90)
@@ -546,88 +579,76 @@ local function ScanGunTextures()
         idLbl.Parent = row
 
         row.MouseButton1Click:Connect(function()
-            -- deselect all
             for _, r in ipairs(skinListFrame:GetChildren()) do
-                if r:IsA("TextButton") then
-                    r.BackgroundColor3 = Color3.fromRGB(35,35,35)
-                end
+                if r:IsA("TextButton") then r.BackgroundColor3 = Color3.fromRGB(35,35,35) end
             end
             row.BackgroundColor3 = Color3.fromRGB(0,100,50)
             selectedTexture = tex
             inputBox.Text = tex.id
         end)
-
         row.MouseEnter:Connect(function()
-            if selectedTexture ~= tex then
-                row.BackgroundColor3 = Color3.fromRGB(50,50,50)
-            end
+            if selectedTexture ~= tex then row.BackgroundColor3 = Color3.fromRGB(50,50,50) end
         end)
         row.MouseLeave:Connect(function()
-            if selectedTexture ~= tex then
-                row.BackgroundColor3 = Color3.fromRGB(35,35,35)
-            end
+            if selectedTexture ~= tex then row.BackgroundColor3 = Color3.fromRGB(35,35,35) end
         end)
     end
 
-    skinListFrame.CanvasSize = UDim2.new(0,0,0, #found * 40 + 8)
+    skinListFrame.CanvasSize = UDim2.new(0,0,0,#found*42+8)
 end
 
-MakeButton("🔍 Scan Gun Textures", 596, ScanGunTextures)
-
--- Apply skin button
-MakeButton("✅ Apply Skin (client only)", 840, function()
-    if not selectedTexture then
-        scanStatusLbl.Text = "⚠️ Select a texture slot first!"
-        return
+-- Wire up the scan button properly now that ScanGunTextures is defined
+-- (overwrite the placeholder above)
+local scanBtnRef = content:FindFirstChild("Content") -- won't find, that's fine
+-- Just create a real scan button (the placeholder above is a no-op)
+local realScanBtn = content:GetChildren()
+for _, c in ipairs(content:GetChildren()) do
+    if c:IsA("TextButton") and c.Text == "🔍 Scan Gun Textures" then
+        c.MouseButton1Click:Connect(ScanGunTextures)
     end
+end
+
+MakeButton("✅ Apply Skin", 938, function()
+    if not selectedTexture then scanStatusLbl.Text = "⚠️ Select a slot first!" return end
     local newId = inputBox.Text
-    if newId == "" then
-        scanStatusLbl.Text = "⚠️ Enter a texture ID first!"
-        return
-    end
-
-    -- Prefix rbxassetid:// if needed
+    if newId == "" then scanStatusLbl.Text = "⚠️ Enter a texture ID!" return end
     if not newId:match("^rbxassetid://") and not newId:match("^http") then
         newId = "rbxassetid://" .. newId
     end
-
     local obj = selectedTexture.obj
     local success = false
-
-    if obj:IsA("SpecialMesh") then
-        obj.TextureId = newId; success = true
-    elseif obj:IsA("Decal") then
-        obj.Texture = newId; success = true
-    elseif obj:IsA("Texture") then
-        obj.Texture = newId; success = true
+    if obj:IsA("SpecialMesh") then obj.TextureId = newId; success = true
+    elseif obj:IsA("Decal") then obj.Texture = newId; success = true
+    elseif obj:IsA("Texture") then obj.Texture = newId; success = true
+    elseif obj:IsA("MeshPart") then obj.TextureID = newId; success = true
     elseif obj:IsA("SurfaceAppearance") then
-        obj.ColorMap = newId; success = true
-    elseif obj:IsA("MeshPart") then
-        obj.TextureID = newId; success = true
+        local mt = selectedTexture.mapType
+        if mt == "ColorMap"     then obj.ColorMap     = newId; success = true
+        elseif mt == "NormalMap"    then obj.NormalMap    = newId; success = true
+        elseif mt == "RoughnessMap" then obj.RoughnessMap = newId; success = true
+        elseif mt == "MetalnessMap" then obj.MetalnessMap = newId; success = true
+        end
     end
-
-    if success then
-        scanStatusLbl.Text = "✅ Skin applied! (client-side only)"
-        selectedTexture.id = newId
-    else
-        scanStatusLbl.Text = "❌ Could not apply skin to this slot"
-    end
+    scanStatusLbl.Text = success and "✅ Skin applied! (client-side)" or "❌ Could not apply skin"
 end)
 
--- Reset skin button
-MakeButton("🔄 Reset Selected Skin", 876, function()
-    if not selectedTexture then
-        scanStatusLbl.Text = "⚠️ Select a texture slot first!"
-        return
-    end
+MakeButton("🔄 Reset Skin", 974, function()
+    if not selectedTexture then scanStatusLbl.Text = "⚠️ Select a slot first!" return end
     local obj = selectedTexture.obj
     local orig = selectedTexture.id
     if obj:IsA("SpecialMesh") then obj.TextureId = orig
     elseif obj:IsA("Decal") then obj.Texture = orig
     elseif obj:IsA("Texture") then obj.Texture = orig
-    elseif obj:IsA("SurfaceAppearance") then obj.ColorMap = orig
-    elseif obj:IsA("MeshPart") then obj.TextureID = orig end
-    scanStatusLbl.Text = "🔄 Skin reset to original"
+    elseif obj:IsA("MeshPart") then obj.TextureID = orig
+    elseif obj:IsA("SurfaceAppearance") then
+        local mt = selectedTexture.mapType
+        if mt == "ColorMap"     then obj.ColorMap     = orig
+        elseif mt == "NormalMap"    then obj.NormalMap    = orig
+        elseif mt == "RoughnessMap" then obj.RoughnessMap = orig
+        elseif mt == "MetalnessMap" then obj.MetalnessMap = orig
+        end
+    end
+    scanStatusLbl.Text = "🔄 Skin reset"
 end)
 
 -- ================================================
@@ -670,14 +691,12 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 end)
 
 -- ================================================
---   AIMBOT
+--   AIMBOT + FOV CIRCLE
 -- ================================================
-
--- FOV Circle drawing
 local fovCircle = Drawing.new("Circle")
 fovCircle.Visible = false
 fovCircle.Radius = STATE.AimbotFOV
-fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Color = Color3.fromRGB(255,255,255)
 fovCircle.Thickness = 1
 fovCircle.Filled = false
 fovCircle.NumSides = 64
@@ -689,16 +708,13 @@ local function GetTargetPart(character)
         return character:FindFirstChild("HumanoidRootPart")
     elseif STATE.AimbotTarget == "Nearest" then
         local closest, closestDist = nil, math.huge
+        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
-                local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
-                if onScreen then
-                    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+                local sp, on = Camera:WorldToViewportPoint(part.Position)
+                if on then
                     local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-                    if dist < closestDist then
-                        closestDist = dist
-                        closest = part
-                    end
+                    if dist < closestDist then closestDist = dist; closest = part end
                 end
             end
         end
@@ -706,19 +722,19 @@ local function GetTargetPart(character)
     end
 end
 
+-- Current aimbot locked target (used by triggerbot too)
+local currentAimbotTarget = nil
+
 RunService.RenderStepped:Connect(function()
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-
-    -- Update FOV circle
     fovCircle.Position = center
     fovCircle.Radius = STATE.AimbotFOV
     fovCircle.Visible = STATE.AimbotEnabled
 
+    currentAimbotTarget = nil
     if not STATE.AimbotEnabled then return end
 
-    -- Find closest player in FOV
-    local bestTarget = nil
-    local bestDist = math.huge
+    local bestTarget, bestDist = nil, math.huge
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
@@ -732,9 +748,7 @@ RunService.RenderStepped:Connect(function()
         local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
         if not onScreen then continue end
 
-        local screenPos = Vector2.new(sp.X, sp.Y)
-        local dist = (screenPos - center).Magnitude
-
+        local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
         if dist < STATE.AimbotFOV and dist < bestDist then
             bestDist = dist
             bestTarget = part
@@ -742,14 +756,65 @@ RunService.RenderStepped:Connect(function()
     end
 
     if bestTarget then
-        local sp = Camera:WorldToViewportPoint(bestTarget.Position)
-        local targetScreen = Vector2.new(sp.X, sp.Y)
-        local smooth = STATE.AimbotSmooth
-
-        -- Smooth camera move toward target
+        currentAimbotTarget = bestTarget
         local currentCF = Camera.CFrame
-        local targetCF = CFrame.new(currentCF.Position, bestTarget.Position)
-        Camera.CFrame = currentCF:Lerp(targetCF, 1/smooth)
+        local targetCF  = CFrame.new(currentCF.Position, bestTarget.Position)
+        Camera.CFrame   = currentCF:Lerp(targetCF, 1/STATE.AimbotSmooth)
+    end
+end)
+
+-- ================================================
+--   TRIGGERBOT
+--   Fires when crosshair (or aimbot lock) is over an enemy
+-- ================================================
+local triggerbotCooldown = false
+
+RunService.Heartbeat:Connect(function()
+    if not STATE.TriggerbotEnabled then return end
+    if triggerbotCooldown then return end
+
+    -- Use aimbot target if available, otherwise raycast from camera
+    local shouldShoot = false
+
+    if currentAimbotTarget then
+        -- If aimbot is locking onto someone, shoot
+        shouldShoot = true
+    else
+        -- Raycast from camera center to check if crosshair is on an enemy
+        local unitRay = Camera:ScreenPointToRay(
+            Camera.ViewportSize.X / 2,
+            Camera.ViewportSize.Y / 2
+        )
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        local char = LocalPlayer.Character
+        if char then raycastParams.FilterDescendantsInstances = {char} end
+
+        local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+        if result and result.Instance then
+            -- Check if the hit part belongs to an enemy player
+            local hitModel = result.Instance:FindFirstAncestorOfClass("Model")
+            if hitModel then
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LocalPlayer and player.Character == hitModel then
+                        local hum = hitModel:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 then
+                            shouldShoot = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if shouldShoot then
+        triggerbotCooldown = true
+        -- Simulate mouse click
+        mouse1click()
+        task.delay(STATE.TriggerbotDelay, function()
+            triggerbotCooldown = false
+        end)
     end
 end)
 
@@ -782,36 +847,51 @@ local function RemoveESP(player)
     if not d then return end
     for _,l in ipairs(d.BoxLines) do l:Remove() end
     d.NameLabel:Remove(); d.DistLabel:Remove()
-    d.HealthBG:Remove();  d.HealthFill:Remove()
+    d.HealthBG:Remove(); d.HealthFill:Remove()
     ESPObjects[player] = nil
 end
 
+-- Fixed bounding box — uses actual character parts instead of fixed offsets
 local function GetBoundingBox(character)
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    local pos = root.Position
-    local hw,hh = 1.5,3.0
-    local corners = {
-        Vector3.new(hw,hh,hw),   Vector3.new(-hw,hh,hw),
-        Vector3.new(hw,-hh,hw),  Vector3.new(-hw,-hh,hw),
-        Vector3.new(hw,hh,-hw),  Vector3.new(-hw,hh,-hw),
-        Vector3.new(hw,-hh,-hw), Vector3.new(-hw,-hh,-hw),
-    }
-    local minX,minY,maxX,maxY = math.huge,math.huge,-math.huge,-math.huge
-    for _,o in ipairs(corners) do
-        local sp,on = Camera:WorldToViewportPoint(pos+o)
-        if on then
-            minX=math.min(minX,sp.X); minY=math.min(minY,sp.Y)
-            maxX=math.max(maxX,sp.X); maxY=math.max(maxY,sp.Y)
+    local minX, minY =  math.huge,  math.huge
+    local maxX, maxY = -math.huge, -math.huge
+    local anyOnScreen = false
+
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            -- Sample 8 corners of each part's bounding box
+            local size = part.Size / 2
+            local cf   = part.CFrame
+            local offsets = {
+                Vector3.new( size.X,  size.Y,  size.Z),
+                Vector3.new(-size.X,  size.Y,  size.Z),
+                Vector3.new( size.X, -size.Y,  size.Z),
+                Vector3.new(-size.X, -size.Y,  size.Z),
+                Vector3.new( size.X,  size.Y, -size.Z),
+                Vector3.new(-size.X,  size.Y, -size.Z),
+                Vector3.new( size.X, -size.Y, -size.Z),
+                Vector3.new(-size.X, -size.Y, -size.Z),
+            }
+            for _, offset in ipairs(offsets) do
+                local worldPos = cf:PointToWorldSpace(offset)
+                local sp, on = Camera:WorldToViewportPoint(worldPos)
+                if on then
+                    anyOnScreen = true
+                    minX = math.min(minX, sp.X)
+                    minY = math.min(minY, sp.Y)
+                    maxX = math.max(maxX, sp.X)
+                    maxY = math.max(maxY, sp.Y)
+                end
+            end
         end
     end
-    if minX==math.huge then return nil end
-    local _,on = Camera:WorldToViewportPoint(pos+Vector3.new(0,hh,0))
-    return {MinX=minX,MinY=minY,MaxX=maxX,MaxY=maxY,OnScreen=on}
+
+    if not anyOnScreen then return nil end
+    return {MinX=minX, MinY=minY, MaxX=maxX, MaxY=maxY, OnScreen=true}
 end
 
 RunService.RenderStepped:Connect(function()
-    for player,d in pairs(ESPObjects) do
+    for player, d in pairs(ESPObjects) do
         local function hide()
             for _,l in ipairs(d.BoxLines) do l.Visible=false end
             d.NameLabel.Visible=false; d.DistLabel.Visible=false
@@ -827,7 +907,7 @@ RunService.RenderStepped:Connect(function()
         local dist = (root.Position - lr.Position).Magnitude
         if dist > ESP_CONFIG.MaxDistance then hide() continue end
         local box = GetBoundingBox(char)
-        if not box or not box.OnScreen then hide() continue end
+        if not box then hide() continue end
         local bx1,by1,bx2,by2 = box.MinX,box.MinY,box.MaxX,box.MaxY
         local bh = by2-by1
         if ESP_CONFIG.BoxEnabled then
@@ -839,12 +919,12 @@ RunService.RenderStepped:Connect(function()
         else for _,l in ipairs(d.BoxLines) do l.Visible=false end end
         if ESP_CONFIG.NameEnabled then
             d.NameLabel.Text=player.DisplayName
-            d.NameLabel.Position=Vector2.new((bx1+bx2)/2,by1-18)
+            d.NameLabel.Position=Vector2.new((bx1+bx2)/2, by1-18)
             d.NameLabel.Visible=true
         else d.NameLabel.Visible=false end
         if ESP_CONFIG.DistanceEnabled then
             d.DistLabel.Text=string.format("[%d studs]",math.floor(dist))
-            d.DistLabel.Position=Vector2.new((bx1+bx2)/2,by1-4)
+            d.DistLabel.Position=Vector2.new((bx1+bx2)/2, by1-4)
             d.DistLabel.Visible=true
         else d.DistLabel.Visible=false end
         if ESP_CONFIG.HealthBarEnabled then
