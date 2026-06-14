@@ -42,8 +42,6 @@ local STATE = {
     AimbotTarget     = "Head",
     AimbotFOV        = 120,
     AimbotSmooth     = 5,
-    TriggerbotEnabled = false,
-    TriggerbotDelay  = 0.05,
 }
 
 -- ================================================
@@ -355,9 +353,6 @@ MakeDropdown("Target",     252, {"Head","HumanoidRootPart","Nearest"}, function(
 MakeSlider("FOV",          290, 10, 400, 120, function(v) STATE.AimbotFOV = v end)
 MakeSlider("Smoothness",   338, 1, 20, 5,     function(v) STATE.AimbotSmooth = v end)
 
-MakeSection("— Triggerbot", 390)
-MakeToggle("Triggerbot",   408, false, function(v) STATE.TriggerbotEnabled = v end)
-MakeSlider("Shoot Delay",  442, 0, 20, 5, function(v) STATE.TriggerbotDelay = v/100 end)
 
 MakeSection("— Movement", 494)
 MakeToggle("NoClip",       512, false, function(v) STATE.NoClip = v end)
@@ -672,12 +667,7 @@ end)
 
 
 
--- Insert key to show/hide menu
-UserInputService.InputBegan:Connect(function(i)
-    if i.KeyCode == Enum.KeyCode.Insert then
-        mainFrame.Visible = not mainFrame.Visible
     end
-end)
 
 
 -- ================================================
@@ -732,7 +722,6 @@ local function GetTargetPart(character)
     end
 end
 
--- Current aimbot locked target (used by triggerbot too)
 local currentAimbotTarget = nil
 
 RunService.RenderStepped:Connect(function()
@@ -773,60 +762,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ================================================
---   TRIGGERBOT
---   Fires when crosshair (or aimbot lock) is over an enemy
--- ================================================
-local triggerbotCooldown = false
-
-RunService.Heartbeat:Connect(function()
-    if not STATE.TriggerbotEnabled then return end
-    if triggerbotCooldown then return end
-
-    -- Use aimbot target if available, otherwise raycast from camera
-    local shouldShoot = false
-
-    if currentAimbotTarget then
-        -- If aimbot is locking onto someone, shoot
-        shouldShoot = true
-    else
-        -- Raycast from camera center to check if crosshair is on an enemy
-        local unitRay = Camera:ScreenPointToRay(
-            Camera.ViewportSize.X / 2,
-            Camera.ViewportSize.Y / 2
-        )
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-        local char = LocalPlayer.Character
-        if char then raycastParams.FilterDescendantsInstances = {char} end
-
-        local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
-        if result and result.Instance then
-            -- Check if the hit part belongs to an enemy player
-            local hitModel = result.Instance:FindFirstAncestorOfClass("Model")
-            if hitModel then
-                for _, player in ipairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer and player.Character == hitModel then
-                        local hum = hitModel:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 then
-                            shouldShoot = true
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    if shouldShoot then
-        triggerbotCooldown = true
-        -- Simulate mouse click
-        mouse1click()
-        task.delay(STATE.TriggerbotDelay, function()
-            triggerbotCooldown = false
-        end)
-    end
-end)
 
 -- ================================================
 --   ESP
