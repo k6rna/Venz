@@ -670,6 +670,15 @@ UserInputService.InputChanged:Connect(function(i)
     end
 end)
 
+
+-- Insert key to show/hide menu
+UserInputService.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.KeyCode == Enum.KeyCode.Insert then
+        mainFrame.Visible = not mainFrame.Visible
+    end
+end)
+
 -- ================================================
 --   NOCLIP
 -- ================================================
